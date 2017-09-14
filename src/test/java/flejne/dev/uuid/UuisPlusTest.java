@@ -11,8 +11,8 @@ public class UuisPlusTest {
     @Test
     public void uuidIsStrictlyValid()
     {
-        assertTrue(UuidPlus.isUuidValid.test(validStrict));
-        assertTrue(UuidPlus.isUuidNotVersionned.test(validStrict));
+        assertTrue(UuidPlus.isVersionnedUuid.test(validStrict));
+        assertTrue(UuidPlus.isPatternValid.test(validStrict));
         assertTrue(UuidPlus.isUuidSizeValid.test(validStrict));
     }
 
