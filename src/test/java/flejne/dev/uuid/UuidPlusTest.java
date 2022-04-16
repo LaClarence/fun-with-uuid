@@ -40,7 +40,7 @@ public class UuidPlusTest {
 	@ParameterizedTest
 	@ValueSource(strings = { validNotStrict, UuidPlus.EMPTY, validStrict })
 	public void string_uuid_size_should_be_valid(String candidate) {
-		assertTrue(UuidPlus.isStringSizeValid.test(candidate), " Size of '" + candidate + "' is not valid!");
+		assertTrue(UuidPlus.isSizeValid.test(candidate), " Size of '" + candidate + "' is not valid!");
 	}
 
 	@ParameterizedTest
@@ -59,7 +59,7 @@ public class UuidPlusTest {
 	@Test
 	public void convertKeyIdFromUuid() {
 	  var HEXASTRING = UuidPlus.bytesToHexa.apply(KEYID_UUID_BYTES);
-	  assertTrue(UuidPlus.hexaStringSizeValid.test(HEXASTRING), () -> "Hexa string size is not valid");
+	  assertTrue(UuidPlus.isSizeValid.test(HEXASTRING), () -> "Hexa string size is not valid");
 		assertEquals(KEYID_HEXA_BI, HEXASTRING, () -> "Hexa string does not match");
 		String hexa = UuidPlus.printHexBinary(KEYID_UUID_BYTES);
 		assertTrue(UuidPlus.uuidEquals(KEYID_UUID, hexa),() -> "UUID string does not match!");
