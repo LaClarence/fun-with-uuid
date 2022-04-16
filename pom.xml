@@ -22,7 +22,7 @@
     <version.maven-surefire-plugin>2.19.1</version.maven-surefire-plugin>
 
     <!-- Versions -->
-    <version.junit>4.11</version.junit>  
+    <version.junit>4.13.1</version.junit>  
   </properties>
 
   <dependencies>
