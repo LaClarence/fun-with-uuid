@@ -1,51 +1,109 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
-  <modelVersion>4.0.0</modelVersion>
-  <groupId>flejne.dev.uuid</groupId>
-  <artifactId>fun-with-uuid</artifactId>
-  <packaging>jar</packaging>
-  <version>0.1-SNAPSHOT</version>
-  <name>fun-with-uuid</name>
-  <url>https://github.com/LaClarence/fun-with-uuid.git</url>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<groupId>flejne.dev.uuid</groupId>
+	<artifactId>uuidplus</artifactId>
+	<packaging>jar</packaging>
+	<version>0.3-SNAPSHOT</version>
+	<name>uuidplus</name>
+	<url>https://github.com/LaClarence/fun-with-uuid.git</url>
 
-  <properties>
-    <!-- Encoding-->
-    <file.encoding>UTF8</file.encoding>
-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-    <maven.compiler.source>9</maven.compiler.source>
-    <maven.compiler.target>9</maven.compiler.target>
-    <java.version>1.9</java.version>
-    <!-- Maven Plugin version -->
-    <version.maven-compiler-plugin>3.5.1</version.maven-compiler-plugin>
-    <version.maven-surefire-plugin>2.19.1</version.maven-surefire-plugin>
+	<properties>
+		<!-- Encoding -->
+		<file.encoding>UTF8</file.encoding>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+		<version.jdk>17</version.jdk>
+		<!-- Maven Plugin version -->
+		<version.maven-compiler-plugin>3.10.1</version.maven-compiler-plugin>
+		<version.maven-surefire-plugin>3.0.0-M6</version.maven-surefire-plugin>
+		<version.maven-toolchains-plugin>3.0.0</version.maven-toolchains-plugin>
 
-    <!-- Versions -->
-    <version.junit>4.11</version.junit>  
-  </properties>
+		<!-- Artifacts versions -->
+		<version.jaxb-api>2.3.1</version.jaxb-api>
+		<version.junit>5.8.2</version.junit>
+		<version.junit.platform>1.8.2</version.junit.platform>
+		<version.junit.vintage>5.8.2</version.junit.vintage>
+	</properties>
 
-  <dependencies>
+	<build>
+		<pluginManagement>
+			<plugins>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-toolchains-plugin</artifactId>
+					<version>${version.maven-toolchains-plugin}</version>
+					<executions>
+						<execution>
+							<phase>validate</phase>
+							<goals>
+								<goal>toolchain</goal>
+							</goals>
+						</execution>
+					</executions>
+					<configuration>
+						<toolchains>
+							<jdk>
+								<version>${version.jdk}</version>
+							</jdk>
+						</toolchains>
+					</configuration>
+				</plugin>
 
-    <!-- Test dependencies -->
-    <dependency>
-      <groupId>junit</groupId>
-      <artifactId>junit</artifactId>
-      <version>${version.junit}</version>
-      <scope>test</scope>
-    </dependency>
-  </dependencies>
-  <build>
-      <plugins>
-	<plugin>
-	  <groupId>org.apache.maven.plugins</groupId>
-	  <artifactId>maven-compiler-plugin</artifactId>
-          <version>${version.maven-compiler-plugin}</version>
-            <configuration>
-              <source>${java.version}</source>
-              <target>${java.version}</target>
-             </configuration>
-	  </plugin>
-	  </plugins>
-      </build>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-compiler-plugin</artifactId>
+					<version>${version.maven-compiler-plugin}</version>
+					<configuration>
+						<showWarnings>true</showWarnings>
+						<showDeprecation>true</showDeprecation>
+						<release>${version.jdk}</release>
+					</configuration>
+				</plugin>
+
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-surefire-plugin</artifactId>
+					<version>${version.maven-surefire-plugin}</version>
+				</plugin>
+
+			</plugins>
+		</pluginManagement>
+	</build>
+
+	<dependencies>
+
+		<dependency>
+			<groupId>javax.xml.bind</groupId>
+			<artifactId>jaxb-api</artifactId>
+			<version>${version.jaxb-api}</version>
+			<scope>compile</scope>
+		</dependency>
+
+		<dependency>
+			<groupId>org.junit.jupiter</groupId>
+			<artifactId>junit-jupiter-api</artifactId>
+			<version>${version.junit}</version>
+			<scope>test</scope>
+		</dependency>
+
+		<dependency>
+			<groupId>org.junit.jupiter</groupId>
+			<artifactId>junit-jupiter-engine</artifactId>
+			<version>${version.junit}</version>
+			<scope>test</scope>
+		</dependency>
+
+		<dependency>
+			<groupId>org.junit.jupiter</groupId>
+			<artifactId>junit-jupiter-params</artifactId>
+			<version>${version.junit}</version>
+			<scope>test</scope>
+		</dependency>
+
+	</dependencies>
+
 </project>
+
