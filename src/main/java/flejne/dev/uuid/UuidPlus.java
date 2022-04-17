@@ -159,7 +159,7 @@ public final class UuidPlus {
   }
 
   /**
-   * 
+   * Compare formatted UUID
    * @param uuid1
    * @param uuid2
    * @return
