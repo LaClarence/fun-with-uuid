@@ -3,7 +3,7 @@
 	<groupId>flejne.dev.uuid</groupId>
 	<artifactId>uuidplus</artifactId>
 	<packaging>jar</packaging>
-	<version>0.3-SNAPSHOT</version>
+	<version>0.3</version>
 	<name>uuidplus</name>
 	<url>https://github.com/LaClarence/fun-with-uuid.git</url>
 
@@ -31,7 +31,8 @@
 		<url>scm:git:file:./.git</url>
 		<connection>scm:git:file:./.git</connection>
 		<developerConnection>scm:git:file:./.git</developerConnection>
-	</scm>
+	  <tag>uuidplus-0.3</tag>
+  </scm>
 
 	<build>
 		<pluginManagement>
