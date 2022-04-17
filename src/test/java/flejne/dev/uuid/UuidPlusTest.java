@@ -38,13 +38,13 @@ public class UuidPlusTest {
 	private final String KEYID_HEXA_LI = "12EB8A452F115944A2602F9D8F800564";
 
 	@ParameterizedTest
-	@ValueSource(strings = { validNotStrict, UuidPlus.EMPTY, validStrict })
+	@ValueSource(strings = { validNotStrict, UuidPlus.NIL_UUID, validStrict })
 	public void string_uuid_size_should_be_valid(String candidate) {
 		assertTrue(UuidPlus.isSizeValid.test(candidate), " Size of '" + candidate + "' is not valid!");
 	}
 
 	@ParameterizedTest
-	@ValueSource(strings = { validNotStrict, UuidPlus.EMPTY, validStrict })
+	@ValueSource(strings = { validNotStrict, UuidPlus.NIL_UUID, validStrict })
 	public void string_uuid_should_be_valid(String candidate) {
 		assertTrue(UuidPlus.isPatternLoose.test(validNotStrict),
 				" UUID hexa format of '" + candidate + "' is not valid!");

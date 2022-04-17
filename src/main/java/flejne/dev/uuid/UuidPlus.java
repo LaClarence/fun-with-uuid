@@ -43,9 +43,9 @@ public final class UuidPlus {
 
   private static final ThreadLocalRandom RANDOM = ThreadLocalRandom.current();
 
-  static final String EMPTY = "00000000-0000-0000-0000-000000000000";
+  static final String NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
-  static Predicate<String> isNil = EMPTY::equals;
+  static Predicate<String> isNil = NIL_UUID::equals;
 
   public static Predicate<String> isSizeValid = UUID_LENGTH::isLengthValid;
 
