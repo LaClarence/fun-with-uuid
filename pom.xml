@@ -6,37 +6,47 @@
     <packaging>jar</packaging>
     <version>0.5-SNAPSHOT</version>
     <name>uuidplus</name>
-    <url>https://github.com/LaClarence/fun-with-uuid.git</url>
+    <url>https://github.com/LaClarence/fun-with-uuid</url>
     <description>Utility class for UUID manipulation, conversion and validation</description>
+
     <licenses>
         <license>
-            <name>Apache 2.0</name>
+            <name>Apache-2.0</name>
             <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <distribution>repo</distribution>
         </license>
     </licenses>
+
     <developers>
-        <developer><name>F. Lejosne</name></developer>
+        <developer>
+            <id>flejne</id>
+            <name>F. Lejosne</name>
+            <email>flejne@gmail.com</email>
+        </developer>
     </developers>
 
+    <scm>
+        <url>https://github.com/LaClarence/fun-with-uuid</url>
+        <connection>scm:git:https://github.com/LaClarence/fun-with-uuid.git</connection>
+        <developerConnection>scm:git:https://github.com/LaClarence/fun-with-uuid.git</developerConnection>
+        <tag>HEAD</tag>
+    </scm>
+
     <properties>
-        <!-- Encoding -->
-        <file.encoding>UTF8</file.encoding>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <jdk.version>26</jdk.version>
-        <!-- Maven Plugin version -->
+        <!-- Maven Plugin versions -->
         <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
         <maven-surefire-plugin.version>3.5.5</maven-surefire-plugin.version>
         <maven-toolchains-plugin.version>3.2.0</maven-toolchains-plugin.version>
         <maven-release-plugin.version>3.3.1</maven-release-plugin.version>
+        <maven-jar-plugin.version>3.4.2</maven-jar-plugin.version>
+        <maven-source-plugin.version>3.3.1</maven-source-plugin.version>
+        <maven-javadoc-plugin.version>3.11.2</maven-javadoc-plugin.version>
+        <maven-gpg-plugin.version>3.2.7</maven-gpg-plugin.version>
+        <central-publishing-maven-plugin.version>0.6.0</central-publishing-maven-plugin.version>
     </properties>
-
-    <scm>
-        <url>scm:git:https://github.com/LaClarence/fun-with-uuid.git</url>
-        <connection>scm:git:https://github.com/LaClarence/fun-with-uuid.git</connection>
-        <developerConnection>scm:githttps://github.com/LaClarence/fun-with-uuid.git</developerConnection>
-    </scm>
 
     <dependencyManagement>
         <dependencies>
@@ -50,17 +60,13 @@
         </dependencies>
     </dependencyManagement>
 
-
     <dependencies>
-
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
-
     </dependencies>
-
 
     <build>
         <pluginManagement>
@@ -72,16 +78,12 @@
                     <executions>
                         <execution>
                             <phase>validate</phase>
-                            <goals>
-                                <goal>toolchain</goal>
-                            </goals>
+                            <goals><goal>toolchain</goal></goals>
                         </execution>
                     </executions>
                     <configuration>
                         <toolchains>
-                            <jdk>
-                                <version>${jdk.version}</version>
-                            </jdk>
+                            <jdk><version>${jdk.version}</version></jdk>
                         </toolchains>
                     </configuration>
                 </plugin>
@@ -107,8 +109,135 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-release-plugin</artifactId>
                     <version>${maven-release-plugin.version}</version>
+                    <configuration>
+                        <autoVersionSubmodules>true</autoVersionSubmodules>
+                        <useReleaseProfile>false</useReleaseProfile>
+                        <releaseProfiles>release</releaseProfiles>
+                        <goals>deploy</goals>
+                    </configuration>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-source-plugin</artifactId>
+                    <version>${maven-source-plugin.version}</version>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-javadoc-plugin</artifactId>
+                    <version>${maven-javadoc-plugin.version}</version>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-gpg-plugin</artifactId>
+                    <version>${maven-gpg-plugin.version}</version>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.sonatype.central</groupId>
+                    <artifactId>central-publishing-maven-plugin</artifactId>
+                    <version>${central-publishing-maven-plugin.version}</version>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-jar-plugin</artifactId>
+                    <version>${maven-jar-plugin.version}</version>
                 </plugin>
             </plugins>
         </pluginManagement>
+
+        <resources>
+            <resource>
+                <directory>${project.basedir}</directory>
+                <includes><include>LICENSE</include></includes>
+                <targetPath>META-INF</targetPath>
+            </resource>
+        </resources>
+
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+                            <addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
+                        </manifest>
+                        <manifestEntries>
+                            <Built-By>${user.name}</Built-By>
+                            <Build-Jdk-Spec>${java.specification.version}</Build-Jdk-Spec>
+                            <Bundle-License>https://www.apache.org/licenses/LICENSE-2.0.txt</Bundle-License>
+                            <Automatic-Module-Name>flejne.dev.uuid</Automatic-Module-Name>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>release</id>
+            <build>
+                <plugins>
+                    <!-- Sources jar — required by Maven Central -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-source-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>attach-sources</id>
+                                <goals><goal>jar-no-fork</goal></goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <!-- Javadoc jar — required by Maven Central -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-javadoc-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>attach-javadocs</id>
+                                <goals><goal>jar</goal></goals>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <release>${jdk.version}</release>
+                            <doclint>none</doclint>
+                        </configuration>
+                    </plugin>
+
+                    <!-- GPG signing — required by Maven Central -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>sign-artifacts</id>
+                                <phase>verify</phase>
+                                <goals><goal>sign</goal></goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <!-- Sonatype Central Portal publisher -->
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <extensions>true</extensions>
+                        <configuration>
+                            <publishingServerId>central</publishingServerId>
+                            <autoPublish>false</autoPublish>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+
 </project>

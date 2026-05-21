@@ -16,7 +16,8 @@ class UuidTypeTest {
 
     @Test
     void shouldBeUUIDVersion7() {
-        var uuidToCheck = UUID.ofEpochMillis(Instant.now().getEpochSecond());
+        var nowInMillis = Instant.now().toEpochMilli();
+        var uuidToCheck = UUID.ofEpochMillis(nowInMillis);
         IO.println("Version is : " + UuidType.version(uuidToCheck));
         var typeResult = UuidType.type(uuidToCheck);
         assertSame(UuidType.TIME_ORDERED_EPOCH, typeResult, () -> "Type '" + typeResult + "' not expected!");

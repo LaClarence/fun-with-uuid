@@ -11,7 +11,6 @@ import module java.base;
 /// This class is not instantiable.
 public final class UuidPlus {
 
-
     /// Defines the expected byte-lengths for the three UUID wire representations.
     enum UUID_LENGTH {
         /// Standard formatted UUID string: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` (36 chars).
@@ -19,11 +18,11 @@ public final class UuidPlus {
         /// Raw byte array (16 bytes).
         BYTES(16),
         /// Hex string without dashes (32 chars).
-        HEXA_STRING(32);
+        HEX_STRING(32);
 
         private final int length;
 
-        private UUID_LENGTH(int length) {
+        UUID_LENGTH(int length) {
             this.length = length;
         }
 
@@ -36,12 +35,11 @@ public final class UuidPlus {
         /// @param uuid the value whose length is checked
         /// @return `true` if the length is valid for the inferred representation
         public static <T> boolean isLengthValid(T uuid) {
-            if (uuid instanceof String uuidStr) {
-                return uuidStr.length() == (uuidStr.contains("-") ? FORMATTED_STRING.length : HEXA_STRING.length);
-            } else if (uuid instanceof byte[] uuidBytes) {
-                return uuidBytes.length == BYTES.length;
-            }
-            return false;
+            return switch (uuid) {
+                case String uuidStr   -> uuidStr.length() == (uuidStr.contains("-") ? FORMATTED_STRING.length : HEX_STRING.length);
+                case byte[] uuidBytes -> uuidBytes.length == BYTES.length;
+                case null, default    -> false;
+            };
         }
 
         /// Returns the numeric length associated with this representation.
@@ -60,15 +58,18 @@ public final class UuidPlus {
         }
     }
 
-    private static final int HEXA_RADIX = 16;
 
-    private static final ThreadLocalRandom RANDOM = ThreadLocalRandom.current();
+    /// The all-zero UUID string — nil UUID per RFC 9562.
+    public static final String NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
-    /// The all-zero UUID string `00000000-0000-0000-0000-000000000000` (nil UUID per RFC 4122).
-    static final String NIL_UUID = "00000000-0000-0000-0000-000000000000";
+    /// The all-ones UUID string — max UUID per RFC 9562.
+    public static final String MAX_UUID = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 
-    /// Predicate that returns `true` when a UUID string equals the nil UUID.
-    static Predicate<String> isNil = NIL_UUID::equals;
+    /// Predicate that returns `true` when a UUID string equals the nil UUID (case-insensitive).
+    public static final Predicate<String> isNil = NIL_UUID::equalsIgnoreCase;
+
+    /// Predicate that returns `true` when a UUID string equals the max UUID (case-insensitive).
+    public static final Predicate<String> isMax = MAX_UUID::equalsIgnoreCase;
 
     /// Predicate that validates the character length of a UUID string.
     ///
@@ -114,6 +115,8 @@ public final class UuidPlus {
     public static final Predicate<String> isPatternLoose = isSizeValid.and(REGEXP.LOOSE::matches);
 
 
+    // --- Internal implementation ---
+
     private static final Function<int[], Function<byte[], byte[]>> reOrder = indexes -> bytes -> {
         ByteBuffer output = ByteBuffer.allocate(bytes.length);
         for (int i : indexes) {
@@ -125,6 +128,7 @@ public final class UuidPlus {
         return output.array();
     };
 
+    private static final int[] MIXED_ENDIAN_BYTE_REORDERING = {3, 2, 1, 0, 5, 4, 7, 6};
     /// Reorders the first 8 bytes of a UUID byte array to mixed-endian layout.
     ///
     /// Mixed-endian swaps each 4-byte and 2-byte group within the time fields.
@@ -136,107 +140,176 @@ public final class UuidPlus {
     /// Output:       12 EB 8A 45 2F 11 59 44
     /// Output index:  3  2  1  0  5  4  7  6
     /// ```
-    private static final Function<byte[], byte[]> toMixEndian = reOrder.apply(new int[]{3, 2, 1, 0, 5, 4, 7, 6});
+    private static final Function<byte[], byte[]> toMixEndian = reOrder.apply(MIXED_ENDIAN_BYTE_REORDERING);
 
-    /// Converts a byte array to an uppercase hexadecimal string.
-    public static final Function<byte[], String> bytesToHexa = HexFormat.of().withUpperCase()::formatHex;
+    private static final Function<byte[], String> bytesToHexFn = HexFormat.of().withUpperCase()::formatHex;
 
-    private static final Function<String, byte[]> hexaToBytes = HexFormat.of()::parseHex;
+    private static final Function<String, byte[]> hexToBytesFn = HexFormat.of()::parseHex;
 
-    private static final UnaryOperator<String> uuidToHexa = s -> s.replace("-", "");
+    private static final UnaryOperator<String> uuidToHex = s -> s.replace("-", "");
 
-    /// Converts a UUID string (formatted or hex) to a 16-byte big-endian array.
-    public static final Function<String, byte[]> uuidToBytes = uuidToHexa.andThen(hexaToBytes);
+    private static final Function<String, byte[]> uuidToBytesFn = uuidToHex.andThen(hexToBytesFn);
 
-    /// Converts a UUID string to a 16-byte array in mixed-endian byte order.
-    public static final Function<String, byte[]> uuidToMixEndianBytes = uuidToBytes.andThen(toMixEndian);
+    private static final Function<String, byte[]> uuidToMixEndianBytesFn = uuidToBytesFn.andThen(toMixEndian);
 
-    /// Extracts the `long` at the given byte offset from a byte array wrapping strategy.
-    static IntFunction<Function<byte[], Long>> toLong = offset -> bytes -> ByteBuffer
-            .wrap(bytes, offset, Long.BYTES).getLong();
+    private static final IntFunction<Function<byte[], Long>> toLong = offset -> bytes ->
+            ByteBuffer.wrap(bytes, offset, Long.BYTES).getLong();
 
     private static final int OFFSET_MSB = 0;
 
     private static final int OFFSET_LSB = 8;
 
-    /// Reads the most-significant 64 bits from a 16-byte UUID array.
-    static Function<byte[], Long> mostSignificantBits = toLong.apply(OFFSET_MSB);
+    private static final Function<byte[], Long> mostSignificantBitsFn = toLong.apply(OFFSET_MSB);
 
-    /// Reads the least-significant 64 bits from a 16-byte UUID array.
-    static Function<byte[], Long> leastSignificantBits = toLong.apply(OFFSET_LSB);
+    private static final Function<byte[], Long> leastSignificantBitsFn = toLong.apply(OFFSET_LSB);
 
-    private static final Function<byte[], UUID> uuidFromBytes = bytes -> new UUID(mostSignificantBits.apply(bytes),
-            leastSignificantBits.apply(bytes));
+    private static final Function<byte[], UUID> uuidFromBytesFn = bytes ->
+            new UUID(mostSignificantBitsFn.apply(bytes), leastSignificantBitsFn.apply(bytes));
 
     private static final Function<Function<byte[], byte[]>, Function<byte[], UUID>> arrayStrategyToUuid = strategy -> bytes -> {
         if (UUID_LENGTH.isLengthValid(bytes))
-            return strategy.andThen(uuidFromBytes).apply(bytes);
+            return strategy.andThen(uuidFromBytesFn).apply(bytes);
         throw new IllegalArgumentException("The byte array length is expected to be '" + UUID_LENGTH.BYTES + "'");
     };
 
-    /// Converts a 16-byte mixed-endian array to a `UUID`.
-    static Function<byte[], UUID> mixEndianToUuid = arrayStrategyToUuid.apply(toMixEndian);
+    private static final Function<byte[], UUID> mixEndianToUuidFn = arrayStrategyToUuid.apply(toMixEndian);
 
-    /// Converts a 16-byte big-endian array to a `UUID`.
-    static Function<byte[], UUID> bigEndianToUuid = arrayStrategyToUuid.apply(x -> x);
+    private static final Function<byte[], UUID> bigEndianToUuidFn = arrayStrategyToUuid.apply(x -> x);
 
-    /// Converts a 32-character hex string (no dashes) to a `UUID` using big-endian byte order.
-    static Function<String, UUID> hexaToUuid = hexaToBytes.andThen(bigEndianToUuid);
+    private static final Function<String, UUID> hexToUuidFn = hexToBytesFn.andThen(bigEndianToUuidFn);
 
-    /// Converts a 32-character hex string (no dashes) to a `UUID` using mixed-endian byte order.
-    static Function<String, UUID> hexaMixEndianToUuid = hexaToBytes.andThen(mixEndianToUuid);
+    private static final Function<String, UUID> hexMixEndianToUuidFn = hexToBytesFn.andThen(mixEndianToUuidFn);
 
-    /// Parses a `long` value from a hexadecimal string at the given **byte** offset.
-    ///
-    /// The byte offset is converted to a character offset (`byteOffset × 2`) and
-    /// exactly 16 hex characters (8 bytes) are read.
-    ///
-    /// @param hexa       the hexadecimal string (at least `byteOffset × 2 + 16` chars long)
-    /// @param byteOffset the byte position within the UUID (0 for MSB, 8 for LSB)
-    /// @return the `long` value of the hex substring
-    private static long of(String hexa, int byteOffset) {
-        int start = byteOffset * 2;
-        return new BigInteger(hexa.substring(start, start + Long.BYTES * 2), HEXA_RADIX).longValue();
-    }
-
-    /// Converts a 32-character hex string to a `UUID` by parsing MSB and LSB as `BigInteger` values.
-    static Function<String, UUID> hexaStringToUuid = hexa -> {
-        var mostSigBits = of(hexa, OFFSET_MSB);
-        var leastSigBits = of(hexa, OFFSET_LSB);
-        return new UUID(mostSigBits, leastSigBits);
+    private static final Function<BigInteger, UUID> bigIntegerToUuidFn = v -> {
+        byte[] raw = v.toByteArray();
+        byte[] bytes16 = new byte[UUID_LENGTH.BYTES.length()];
+        int srcPos = Math.max(0, raw.length - 16);
+        int destPos = Math.max(0, 16 - raw.length);
+        System.arraycopy(raw, srcPos, bytes16, destPos, raw.length - srcPos);
+        return bigEndianToUuidFn.apply(bytes16);
     };
 
-    /// Converts a `BigInteger` to a `UUID` via a 16-byte big-endian intermediate array.
-    static Function<BigInteger, UUID> bigIntegerToUuid = v -> bigEndianToUuid
-            .apply(ByteBuffer.allocate(UUID_LENGTH.BYTES.length).put(v.toByteArray()).array());
 
-    /// Converts a `UUID` to its 128-bit `BigInteger` representation.
+    // --- Public API ---
+
+    /// Converts a byte array to an uppercase hexadecimal string.
     ///
-    /// @param uuid the UUID to convert
-    /// @return a `BigInteger` holding the full 128-bit UUID value
-    static BigInteger toBigInteger(UUID uuid) {
-        var bb = ByteBuffer.wrap(new byte[UUID_LENGTH.BYTES.length]);
-        bb.putLong(uuid.getMostSignificantBits());
-        bb.putLong(uuid.getLeastSignificantBits());
-        return new BigInteger(bb.array());
+    /// @param bytes the byte array to convert
+    /// @return uppercase hex string
+    public static String bytesToHex(byte[] bytes) {
+        return bytesToHexFn.apply(bytes);
     }
 
-    /// Convert SHA-1 digest to UUID version 5
-    /// @param digest to convert
-    /// @return an UUID
-    static UUID nameUUIDFromSHA1Bytes(byte[] digest) {
-        if (digest == null || digest.length != 20) {
-            throw new IllegalArgumentException("The digest array length is expected to be '" + 20 + "' bytes");
+    /// Converts a UUID string (formatted or hex) to a 16-byte big-endian array.
+    ///
+    /// @param uuid the UUID string (formatted with dashes or raw 32-char hex)
+    /// @return 16-byte big-endian array
+    public static byte[] uuidToBytes(String uuid) {
+        return uuidToBytesFn.apply(uuid);
+    }
+
+    /// Converts a UUID string to a 16-byte array in mixed-endian byte order.
+    ///
+    /// @param uuid the UUID string
+    /// @return 16-byte mixed-endian array
+    public static byte[] uuidToMixEndianBytes(String uuid) {
+        return uuidToMixEndianBytesFn.apply(uuid);
+    }
+
+    /// Converts a 16-byte big-endian array to a `UUID`.
+    ///
+    /// @param bytes 16-byte big-endian array
+    /// @return the corresponding UUID
+    /// @throws IllegalArgumentException if the array is not exactly 16 bytes
+    public static UUID bigEndianToUuid(byte[] bytes) {
+        return bigEndianToUuidFn.apply(bytes);
+    }
+
+    /// Converts a 16-byte mixed-endian array to a `UUID`.
+    ///
+    /// @param bytes 16-byte mixed-endian array
+    /// @return the corresponding UUID
+    /// @throws IllegalArgumentException if the array is not exactly 16 bytes
+    public static UUID mixEndianToUuid(byte[] bytes) {
+        return mixEndianToUuidFn.apply(bytes);
+    }
+
+    /// Converts a 32-character hex string (no dashes) to a `UUID` using big-endian byte order.
+    ///
+    /// @param hex 32-character uppercase or lowercase hex string
+    /// @return the corresponding UUID
+    public static UUID hexToUuid(String hex) {
+        return hexToUuidFn.apply(hex);
+    }
+
+    /// Converts a 32-character hex string (no dashes) to a `UUID` using mixed-endian byte order.
+    ///
+    /// @param hex 32-character uppercase or lowercase hex string
+    /// @return the corresponding UUID
+    public static UUID hexMixEndianToUuid(String hex) {
+        return hexMixEndianToUuidFn.apply(hex);
+    }
+
+    /// Converts a `BigInteger` to a `UUID` via a 16-byte big-endian intermediate array.
+    ///
+    /// Handles both values shorter than 16 bytes (right-aligned with leading zeros)
+    /// and the optional leading `0x00` sign byte that `toByteArray()` prepends for
+    /// values whose bit 127 is set.
+    ///
+    /// @param value the BigInteger value (must be non-negative)
+    /// @return the corresponding UUID
+    public static UUID bigIntegerToUuid(BigInteger value) {
+        return bigIntegerToUuidFn.apply(value);
+    }
+
+    /// Reads the most-significant 64 bits from a 16-byte UUID array.
+    ///
+    /// @param bytes 16-byte UUID array
+    /// @return the most-significant long
+    public static long mostSignificantBits(byte[] bytes) {
+        return mostSignificantBitsFn.apply(bytes);
+    }
+
+    /// Reads the least-significant 64 bits from a 16-byte UUID array.
+    ///
+    /// @param bytes 16-byte UUID array
+    /// @return the least-significant long
+    public static long leastSignificantBits(byte[] bytes) {
+        return leastSignificantBitsFn.apply(bytes);
+    }
+
+    /// Converts a `UUID` to its unsigned 128-bit `BigInteger` representation.
+    ///
+    /// `signum = 1` ensures the result is always non-negative, faithfully reflecting
+    /// the unsigned nature of UUIDs (RFC 9562).
+    ///
+    /// @param uuid the UUID to convert
+    /// @return a non-negative `BigInteger` holding the full 128-bit UUID value
+    public static BigInteger toBigInteger(UUID uuid) {
+        var bb = ByteBuffer.wrap(new byte[UUID_LENGTH.BYTES.length()]);
+        bb.putLong(uuid.getMostSignificantBits());
+        bb.putLong(uuid.getLeastSignificantBits());
+        return new BigInteger(1, bb.array());
+    }
+
+    private static final int SHA1_DIGEST_SIZE = 20;
+
+    /// Converts a SHA-1 digest to a UUID version 5.
+    ///
+    /// Truncates the 160-bit digest to 128 bits, then stamps the version nibble
+    /// (octet 6, bits 12–15 → `0x50`) and the variant bits (octet 8, bits 6–7 → `0x80`).
+    ///
+    /// @param digest 20-byte SHA-1 digest
+    /// @return a UUID version 5
+    /// @throws IllegalArgumentException if the digest is null or not exactly 20 bytes
+    public static UUID nameUUIDFromSHA1Bytes(byte[] digest) {
+        if (digest == null || digest.length != SHA1_DIGEST_SIZE) {
+            throw new IllegalArgumentException("The digest array length is expected to be '" + SHA1_DIGEST_SIZE + "' bytes");
         }
         var digest16 = Arrays.copyOf(digest, 16);
-        // Stamp the version nibble (bits 12–15 of octet 6)
         digest16[6] = (byte) ((digest16[6] & 0x0F) | 0x50);
-        // Stamp the variant bits (bits 6–7 of octet 8)
         digest16[8] = (byte) ((digest16[8] & 0x3F) | 0x80);
-        // signum=1 forces positive
-        // The signum argument is critical: without it, if digest[0] has its high bit set the result is negative (two's complement sign extension).
-        BigInteger value = new BigInteger(1, digest16);
-        return UuidPlus.bigIntegerToUuid.apply(value);
+        return bigIntegerToUuidFn.apply(new BigInteger(1, digest16));
     }
 
     /// Compares two UUID strings for equality, ignoring case, after a loose-pattern validation.
@@ -244,7 +317,7 @@ public final class UuidPlus {
     /// @param uuid1 the first UUID string
     /// @param uuid2 the second UUID string
     /// @return `true` if both strings represent the same UUID value
-    static boolean uuidEquals(String uuid1, String uuid2) {
+    public static boolean uuidEquals(String uuid1, String uuid2) {
         return uuid2 != null && uuid2.equalsIgnoreCase(uuid1) && isPatternLoose.test(uuid1);
     }
 
@@ -261,7 +334,54 @@ public final class UuidPlus {
             return false;
         }
         return true;
+    }
 
+    /// Converts a 16-byte array to a formatted UUID string (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`).
+    ///
+    /// @param bytes the byte array (must be exactly 16 bytes)
+    /// @return the formatted UUID string
+    public static String bytesToUuidString(byte[] bytes) {
+        return uuidFromBytesFn.apply(bytes).toString();
+    }
+
+    /// Returns the nil UUID `00000000-0000-0000-0000-000000000000` (all 128 bits zero, per RFC 9562).
+    ///
+    /// @return the nil UUID
+    public static UUID nilUUID() {
+        return new UUID(0L, 0L);
+    }
+
+    /// Returns the max UUID `ffffffff-ffff-ffff-ffff-ffffffffffff` (all 128 bits one, per RFC 9562).
+    ///
+    /// @return the max UUID
+    public static UUID maxUUID() {
+        return new UUID(-1L, -1L);
+    }
+
+    /// Tries to extract the Unix timestamp embedded in a UUID version 7.
+    ///
+    /// UUID v7 encodes the Unix epoch in milliseconds in the 48 most-significant bits
+    /// (bits 127–80). Extracting them is a simple unsigned right-shift by 16.
+    ///
+    /// @param uuid the UUID to inspect
+    /// @return an `Optional` containing the embedded `Instant`, or empty if the UUID is not version 7
+    public static Optional<Instant> tryExtractTimestamp(UUID uuid) {
+        if (uuid.version() != UuidType.TIME_ORDERED_EPOCH.version()) return Optional.empty();
+        return Optional.of(Instant.ofEpochMilli(uuid.getMostSignificantBits() >>> 16));
+    }
+
+    /// Returns a randomly generated UUID using the provided `RandomGenerator`.
+    ///
+    /// Accepts any `RandomGenerator` implementation — use `ThreadLocalRandom.current()`
+    /// for performance in production, or a seeded `Random` for reproducible tests.
+    ///
+    /// **Note:** the version and variant bits are _not_ set, so the result does not
+    /// conform to RFC 4122 UUID v4.
+    ///
+    /// @param rng the random generator to use
+    /// @return a randomly generated UUID
+    public static UUID fastRandom(RandomGenerator rng) {
+        return new UUID(rng.nextLong(), rng.nextLong());
     }
 
     /// Returns a randomly generated UUID using `ThreadLocalRandom`.
@@ -273,15 +393,7 @@ public final class UuidPlus {
     ///
     /// @return a randomly generated UUID
     public static UUID fastRandom() {
-        return new UUID(RANDOM.nextLong(), RANDOM.nextLong());
-    }
-
-    /// Converts a 16-byte array to a formatted UUID string.
-    ///
-    /// @param val the byte array (must be exactly 16 bytes)
-    /// @return the UUID string representation
-    public static String printHexBinary(byte[] val) {
-        return uuidFromBytes.apply(val).toString();
+        return fastRandom(ThreadLocalRandom.current());
     }
 
     private UuidPlus() {

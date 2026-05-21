@@ -15,8 +15,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class UuidPlusTest {
 
     private static final String VALID_STRICT = "adb41c24-2dbf-4a6d-958b-4457c0d27b95";
-    private static final String VALID_HEXA_STRICT = "ADB41C242DBF4A6D958B4457C0D27B95";
-    private static final String VALID_MIX_ENDIAN_HEXA_STRICT = "241CB4ADBF2D6D4A958B4457C0D27B95";
+    private static final String VALID_HEX_STRICT = "ADB41C242DBF4A6D958B4457C0D27B95";
+    private static final String VALID_MIX_ENDIAN_HEX_STRICT = "241CB4ADBF2D6D4A958B4457C0D27B95";
 
     private static final String VALID_NOT_STRICT = "adb41c24-2dbf-5a6d-958b-4457c0d27b95";
     private static final String KEYID_UUID = "458aeb12-112f-4459-a260-2f9d8f800564";
@@ -32,8 +32,10 @@ class UuidPlusTest {
             (byte) 0xA2, (byte) 0x60, (byte) 0x2F, (byte) 0x9D,
             (byte) 0x8F, (byte) 0x80, (byte) 0x05, (byte) 0x64};
 
-    private static final String KEYID_HEXA_BI = "458AEB12112F4459A2602F9D8F800564";
-    private static final String KEYID_HEXA_LI = "12EB8A452F115944A2602F9D8F800564";
+    private static final String KEYID_HEX_BI = "458AEB12112F4459A2602F9D8F800564";
+    private static final String KEYID_HEX_LI = "12EB8A452F115944A2602F9D8F800564";
+
+
 
     @ParameterizedTest
     @ValueSource(strings = {VALID_NOT_STRICT, UuidPlus.NIL_UUID, VALID_STRICT})
@@ -45,7 +47,7 @@ class UuidPlusTest {
     @ValueSource(strings = {VALID_NOT_STRICT, UuidPlus.NIL_UUID, VALID_STRICT})
     void string_uuid_should_be_valid(String candidate) {
         assertTrue(UuidPlus.isPatternLoose.test(VALID_NOT_STRICT),
-                " UUID hexa format of '" + candidate + "' is not valid!");
+                " UUID hex format of '" + candidate + "' is not valid!");
     }
 
     @ParameterizedTest
@@ -54,37 +56,40 @@ class UuidPlusTest {
         assertTrue(UuidPlus.isPatternStrict.test(candidate));
     }
 
+    static final Supplier<String> hexStringDoesNotMatch = () -> "Hex string does not match";
+    static final Supplier<String> uuidStringDoesNotMatch = () -> "UUID string does not match";
+
     @Test
     void convertKeyIdFromUuid() {
-        var hexaString = UuidPlus.bytesToHexa.apply(KEYID_UUID_BYTES);
-        assertTrue(UuidPlus.isSizeValid.test(hexaString), () -> "Hexa string size is not valid");
-        assertEquals(KEYID_HEXA_BI, hexaString, () -> "Hexa string does not match");
-        String hexa = UuidPlus.printHexBinary(KEYID_UUID_BYTES);
-        assertTrue(UuidPlus.uuidEquals(KEYID_UUID, hexa), () -> "UUID string does not match!");
+        var hexaString = UuidPlus.bytesToHex(KEYID_UUID_BYTES);
+        assertTrue(UuidPlus.isSizeValid.test(hexaString), hexStringDoesNotMatch);
+        assertEquals(KEYID_HEX_BI, hexaString, hexStringDoesNotMatch);
+        String hex = UuidPlus.bytesToUuidString(KEYID_UUID_BYTES);
+        assertTrue(UuidPlus.uuidEquals(KEYID_UUID, hex), uuidStringDoesNotMatch);
     }
 
     @Test
     void convertKeyIdFromUuidForMicrosoft() {
-        assertEquals(KEYID_HEXA_LI, UuidPlus.bytesToHexa.apply(KEYID_UUID_BYTES_MS), () -> "Hexa string does not match");
-        String hexaMS = UuidPlus.printHexBinary(KEYID_UUID_BYTES);
-        assertTrue(UuidPlus.uuidEquals(KEYID_UUID, hexaMS), () -> "UUID string does not match!");
+        assertEquals(KEYID_HEX_LI, UuidPlus.bytesToHex(KEYID_UUID_BYTES_MS), hexStringDoesNotMatch);
+        String hexMS = UuidPlus.bytesToUuidString(KEYID_UUID_BYTES);
+        assertTrue(UuidPlus.uuidEquals(KEYID_UUID, hexMS), uuidStringDoesNotMatch);
     }
 
     @Test
     void uuid_converted_to_big_endian_bytes() {
-        byte[] uuidBytes = UuidPlus.uuidToBytes.apply(VALID_STRICT);
-        assertEquals(VALID_HEXA_STRICT, UuidPlus.bytesToHexa.apply(uuidBytes));
+        byte[] uuidBytes = UuidPlus.uuidToBytes(VALID_STRICT);
+        assertEquals(VALID_HEX_STRICT, UuidPlus.bytesToHex(uuidBytes));
 
-        UUID uuidFromBytes = UuidPlus.bigEndianToUuid.apply(uuidBytes);
+        UUID uuidFromBytes = UuidPlus.bigEndianToUuid(uuidBytes);
         assertEquals(UUID.fromString(VALID_STRICT), uuidFromBytes, () -> "UUID big endian should be equals");
     }
 
     @Test
     void uuid_converted_to_mix_endian_bytes() {
-        byte[] uuidBytes = UuidPlus.uuidToMixEndianBytes.apply(VALID_STRICT);
-        assertEquals(VALID_MIX_ENDIAN_HEXA_STRICT, UuidPlus.bytesToHexa.apply(uuidBytes));
+        byte[] uuidBytes = UuidPlus.uuidToMixEndianBytes(VALID_STRICT);
+        assertEquals(VALID_MIX_ENDIAN_HEX_STRICT, UuidPlus.bytesToHex(uuidBytes));
 
-        UUID uuidFromBytes = UuidPlus.mixEndianToUuid.apply(uuidBytes);
+        UUID uuidFromBytes = UuidPlus.mixEndianToUuid(uuidBytes);
         assertEquals(UUID.fromString(VALID_STRICT), uuidFromBytes, () -> "UUID<>bytes mix endian should be equals");
     }
 
@@ -92,8 +97,25 @@ class UuidPlusTest {
     void uuidToBigInteger() {
         UUID uuid = UUID.randomUUID();
         BigInteger value = UuidPlus.toBigInteger(uuid);
-        UUID result = UuidPlus.bigIntegerToUuid.apply(value);
+        UUID result = UuidPlus.bigIntegerToUuid(value);
         assertEquals(uuid.toString(), result.toString());
+    }
+
+    @Test
+    void toBigInteger_max_uuid_should_be_positive_and_round_trip() {
+        BigInteger maxValue = UuidPlus.toBigInteger(UuidPlus.maxUUID());
+
+        assertTrue(maxValue.signum() > 0, "BigInteger representation of MAX UUID must be positive");
+        assertEquals(BigInteger.TWO.pow(128).subtract(BigInteger.ONE), maxValue, "MAX UUID must equal 2^128 - 1");
+        assertEquals(UuidPlus.maxUUID(), UuidPlus.bigIntegerToUuid(maxValue), "Round-trip MAX UUID must be preserved");
+    }
+
+    @Test
+    void toBigInteger_nil_uuid_should_be_zero_and_round_trip() {
+        BigInteger value = UuidPlus.toBigInteger(UuidPlus.nilUUID());
+
+        assertEquals(BigInteger.ZERO, value, "NIL UUID must equal zero");
+        assertEquals(UuidPlus.nilUUID(), UuidPlus.bigIntegerToUuid(value), "Round-trip NIL UUID must be preserved");
     }
 
 
@@ -129,6 +151,20 @@ class UuidPlusTest {
         assertFalse(UuidPlus.isNil.test(candidate));
     }
 
+    // --- isMax ---
+
+    @Test
+    void max_predicate_should_match_max_uuid() {
+        assertTrue(UuidPlus.isMax.test(UuidPlus.MAX_UUID));
+        assertTrue(UuidPlus.isMax.test(UuidPlus.MAX_UUID.toUpperCase()));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {VALID_STRICT, KEYID_UUID, UuidPlus.NIL_UUID})
+    void max_predicate_should_not_match_non_max_uuid(String candidate) {
+        assertFalse(UuidPlus.isMax.test(candidate));
+    }
+
     // --- isSizeValid byte[] ---
 
     @Test
@@ -150,25 +186,18 @@ class UuidPlusTest {
         assertFalse(UuidPlus.isPatternStrict.test(candidate));
     }
 
-    // --- hexaToUuid ---
+    // --- hexToUuid ---
 
     @Test
-    void hexaToUuid_should_convert_big_endian_hex_to_uuid() {
-        assertEquals(UUID.fromString(KEYID_UUID), UuidPlus.hexaToUuid.apply(KEYID_HEXA_BI));
+    void hexToUuid_should_convert_big_endian_hex_to_uuid() {
+        assertEquals(UUID.fromString(KEYID_UUID), UuidPlus.hexToUuid(KEYID_HEX_BI));
     }
 
-    // --- hexaMixEndianToUuid ---
+    // --- hexMixEndianToUuid ---
 
     @Test
-    void hexaMixEndianToUuid_should_convert_mix_endian_hex_to_uuid() {
-        assertEquals(UUID.fromString(KEYID_UUID), UuidPlus.hexaMixEndianToUuid.apply(KEYID_HEXA_LI));
-    }
-
-    // --- hexaStringToUuid ---
-
-    @Test
-    void hexaStringToUuid_should_convert_hex_to_uuid() {
-        assertEquals(UUID.fromString(KEYID_UUID), UuidPlus.hexaStringToUuid.apply(KEYID_HEXA_BI));
+    void hexMixEndianToUuid_should_convert_mix_endian_hex_to_uuid() {
+        assertEquals(UUID.fromString(KEYID_UUID), UuidPlus.hexMixEndianToUuid(KEYID_HEX_LI));
     }
 
     // --- mostSignificantBits / leastSignificantBits ---
@@ -176,13 +205,13 @@ class UuidPlusTest {
     @Test
     void mostSignificantBits_should_extract_correctly() {
         assertEquals(UUID.fromString(KEYID_UUID).getMostSignificantBits(),
-                UuidPlus.mostSignificantBits.apply(KEYID_UUID_BYTES));
+                UuidPlus.mostSignificantBits(KEYID_UUID_BYTES));
     }
 
     @Test
     void leastSignificantBits_should_extract_correctly() {
         assertEquals(UUID.fromString(KEYID_UUID).getLeastSignificantBits(),
-                UuidPlus.leastSignificantBits.apply(KEYID_UUID_BYTES));
+                UuidPlus.leastSignificantBits(KEYID_UUID_BYTES));
     }
 
     // --- uuidEquals negative cases ---
@@ -207,16 +236,16 @@ class UuidPlusTest {
         assertFalse(UuidPlus.uuidEquals("not-a-uuid", "not-a-uuid"));
     }
 
-    // --- arrayStrategyToUuid error path (via bigEndianToUuid / mixEndianToUuid) ---
+    // --- bigEndianToUuid / mixEndianToUuid error path ---
 
     @Test
     void bigEndianToUuid_should_throw_for_invalid_byte_array_length() {
-        assertThrows(IllegalArgumentException.class, () -> UuidPlus.bigEndianToUuid.apply(new byte[15]));
+        assertThrows(IllegalArgumentException.class, () -> UuidPlus.bigEndianToUuid(new byte[15]));
     }
 
     @Test
     void mixEndianToUuid_should_throw_for_invalid_byte_array_length() {
-        assertThrows(IllegalArgumentException.class, () -> UuidPlus.mixEndianToUuid.apply(new byte[17]));
+        assertThrows(IllegalArgumentException.class, () -> UuidPlus.mixEndianToUuid(new byte[17]));
     }
 
     // --- fastRandom structural ---
@@ -231,7 +260,13 @@ class UuidPlusTest {
         assertNotEquals(UuidPlus.fastRandom(), UuidPlus.fastRandom());
     }
 
-    private static <T> Duration ellapsedTime(int max, Supplier<T> supplier) {
+    @Test
+    void fastRandom_with_seeded_random_should_be_reproducible() {
+        long seed = 42L;
+        assertEquals(UuidPlus.fastRandom(new Random(seed)), UuidPlus.fastRandom(new Random(seed)));
+    }
+
+    private static <T> Duration elapsedTime(int max, Supplier<T> supplier) {
         Instant start = Instant.now();
         for (int i = 0; i < max; i++)
             supplier.get();
@@ -239,11 +274,25 @@ class UuidPlusTest {
         return Duration.between(start, end);
     }
 
+    // --- tryExtractTimestamp ---
+
     @Test
-    void isFastRamdomFastEnough() {
-        int max = 10000000;
-        Duration randomUUIDTime = ellapsedTime(max, UUID::randomUUID);
-        Duration fastRandomUUIDTime = ellapsedTime(max, UuidPlus::fastRandom);
+    void tryExtractTimestamp_should_extract_embedded_instant_from_v7() {
+        long epochMilli = Instant.now().toEpochMilli();
+        UUID uuid = UUID.ofEpochMillis(epochMilli);
+        assertEquals(Optional.of(Instant.ofEpochMilli(epochMilli)), UuidPlus.tryExtractTimestamp(uuid));
+    }
+
+    @Test
+    void tryExtractTimestamp_should_return_empty_for_non_v7_uuid() {
+        assertTrue(UuidPlus.tryExtractTimestamp(UUID.randomUUID()).isEmpty());
+    }
+
+    @Test
+    void isFastRandomFastEnough() {
+        int max = 10_000_000;
+        Duration randomUUIDTime = elapsedTime(max, UUID::randomUUID);
+        Duration fastRandomUUIDTime = elapsedTime(max, UuidPlus::fastRandom);
 
         assertTrue(fastRandomUUIDTime.compareTo(randomUUIDTime) < 0);
     }

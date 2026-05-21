@@ -13,6 +13,9 @@ public enum UuidType {
     TIME_ORDERED_EPOCH,
     CUSTOM;
 
+    int version() {
+        return ordinal();
+    }
     static int version(UUID uuid) {
         return uuid == null ? 0 : uuid.version();
     }
