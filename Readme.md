@@ -1,6 +1,6 @@
-# uuidplus
+# Funny ways to cook UUID
 
-A small, dependency-free Java library for **converting, validating and generating UUIDs**.
+`uuidplus` is a small, dependency-free Java library for **converting, validating and generating UUIDs**.
 
 ## Purpose
 
