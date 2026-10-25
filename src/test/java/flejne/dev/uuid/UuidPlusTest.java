@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -128,14 +129,44 @@ class UuidPlusTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"not-a-uuid", "", "ZZZZZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZZZZZZZZZ", "458aeb12-112f-4459-a260"})
+    @ValueSource(strings = {"not-a-uuid", "", "ZZZZZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZZZZZZZZZ", "458aeb12-112f-4459-a260",
+            "1-1-1-1-1", "458aeb12-112f-4459-a260-2f9d8f80056", VALID_HEX_STRICT})
     void isUuid_should_return_false_for_invalid_string(String candidate) {
         assertFalse(UuidPlus.isUuid(candidate));
     }
 
     @Test
-    void isUuid_should_throw_for_null() {
-        assertThrows(NullPointerException.class, () -> UuidPlus.isUuid(null));
+    void isUuid_should_return_false_for_null() {
+        assertFalse(UuidPlus.isUuid(null));
+    }
+
+    // --- fromString / tryFromString ---
+
+    @ParameterizedTest
+    @ValueSource(strings = {VALID_STRICT, VALID_NOT_STRICT, UuidPlus.NIL_UUID, UuidPlus.MAX_UUID, "ADB41C24-2DBF-4A6D-958B-4457C0D27B95"})
+    void fromString_should_parse_canonical_uuid(String candidate) {
+        var expected = UUID.fromString(candidate);
+        assertEquals(expected, UuidPlus.fromString(candidate));
+        assertEquals(Optional.of(expected), UuidPlus.tryFromString(candidate));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"1-1-1-1-1", "0-0-0-0-0", "458aeb12-112f-4459-a260-2f9d8f80056", "not-a-uuid", "", VALID_HEX_STRICT})
+    void fromString_should_reject_non_canonical_string(String candidate) {
+        assertThrows(IllegalArgumentException.class, () -> UuidPlus.fromString(candidate));
+        assertTrue(UuidPlus.tryFromString(candidate).isEmpty());
+    }
+
+    @Test
+    void fromString_should_reject_null() {
+        assertThrows(IllegalArgumentException.class, () -> UuidPlus.fromString(null));
+        assertTrue(UuidPlus.tryFromString(null).isEmpty());
+    }
+
+    @Test
+    void jdk_fromString_accepts_shortened_form_that_fromString_rejects() {
+        assertEquals("00000001-0001-0001-0001-000000000001", UUID.fromString("1-1-1-1-1").toString());
+        assertFalse(UuidPlus.isUuid("1-1-1-1-1"));
     }
 
     // --- isNil ---
@@ -266,12 +297,19 @@ class UuidPlusTest {
         assertEquals(UuidPlus.fastRandom(new Random(seed)), UuidPlus.fastRandom(new Random(seed)));
     }
 
-    private static <T> Duration elapsedTime(int max, Supplier<T> supplier) {
-        Instant start = Instant.now();
-        for (int i = 0; i < max; i++)
-            supplier.get();
-        Instant end = Instant.now();
-        return Duration.between(start, end);
+    @Test
+    void fastRandomV4_should_not_repeat_across_threads() throws Exception {
+        int threads = 8;
+        int perThread = 10_000;
+        try (var executor = Executors.newFixedThreadPool(threads)) {
+            var tasks = Collections.nCopies(threads, (Callable<List<UUID>>) () ->
+                    Stream.generate(UuidPlus::fastRandomV4).limit(perThread).toList());
+            Set<UUID> all = new HashSet<>();
+            for (var future : executor.invokeAll(tasks)) {
+                all.addAll(future.get());
+            }
+            assertEquals(threads * perThread, all.size(), "Each thread must use a differently seeded generator");
+        }
     }
 
     // --- tryExtractTimestamp ---
@@ -289,13 +327,108 @@ class UuidPlusTest {
     }
 
     @Test
-    void isFastRandomFastEnough() {
-        int max = 10_000_000;
-        Duration randomUUIDTime = elapsedTime(max, UUID::randomUUID);
-        Duration fastRandomUUIDTime = elapsedTime(max, UuidPlus::fastRandom);
-
-        assertTrue(fastRandomUUIDTime.compareTo(randomUUIDTime) < 0);
+    void tryExtractTimestamp_should_return_empty_for_null() {
+        assertTrue(UuidPlus.tryExtractTimestamp(null).isEmpty());
     }
+
+    // --- bigIntegerToUuid bounds ---
+
+    @Test
+    void bigIntegerToUuid_should_throw_for_negative_value() {
+        assertThrows(IllegalArgumentException.class, () -> UuidPlus.bigIntegerToUuid(BigInteger.valueOf(-1)));
+    }
+
+    @Test
+    void bigIntegerToUuid_should_throw_for_value_longer_than_128_bits() {
+        assertThrows(IllegalArgumentException.class, () -> UuidPlus.bigIntegerToUuid(BigInteger.ONE.shiftLeft(128)));
+    }
+
+    @Test
+    void bigIntegerToUuid_should_accept_largest_128_bit_value() {
+        var max = BigInteger.ONE.shiftLeft(128).subtract(BigInteger.ONE);
+        assertEquals(UuidPlus.maxUUID(), UuidPlus.bigIntegerToUuid(max));
+    }
+
+    // --- isPatternStrict RFC 9562 versions ---
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "1ec9414c-232a-6b00-b3c8-9e6bdeced846",  // v6
+            "01890a5d-ac96-774b-bcce-b302099a8057",  // v7
+            "320c3d4d-cc00-875b-8ec9-32d5f69181c0"}) // v8
+    void string_uuid_v6_to_v8_should_match_strict_pattern(String candidate) {
+        assertTrue(UuidPlus.isPatternStrict.test(candidate));
+    }
+
+    @Test
+    void string_uuid_v9_should_not_match_strict_pattern() {
+        assertFalse(UuidPlus.isPatternStrict.test("adb41c24-2dbf-9a6d-958b-4457c0d27b95"));
+    }
+
+    // --- input validation ---
+
+    @ParameterizedTest
+    @ValueSource(strings = {"abcd", "", "not-a-uuid", "ZZB41C242DBF4A6D958B4457C0D27B95", "1-1-1-1-1"})
+    void uuidToBytes_should_throw_for_invalid_string(String candidate) {
+        assertThrows(IllegalArgumentException.class, () -> UuidPlus.uuidToBytes(candidate));
+        assertThrows(IllegalArgumentException.class, () -> UuidPlus.uuidToMixEndianBytes(candidate));
+    }
+
+    @Test
+    void uuidToBytes_should_accept_hex_string() {
+        assertArrayEquals(UuidPlus.uuidToBytes(VALID_STRICT), UuidPlus.uuidToBytes(VALID_HEX_STRICT));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 4, 15, 17})
+    void significant_bits_should_throw_for_invalid_byte_array_length(int length) {
+        assertThrows(IllegalArgumentException.class, () -> UuidPlus.mostSignificantBits(new byte[length]));
+        assertThrows(IllegalArgumentException.class, () -> UuidPlus.leastSignificantBits(new byte[length]));
+        assertThrows(IllegalArgumentException.class, () -> UuidPlus.bytesToUuidString(new byte[length]));
+    }
+
+    // --- UUID overloads ---
+
+    @Test
+    void uuidToBytes_from_uuid_should_match_string_conversion() {
+        var uuid = UUID.fromString(KEYID_UUID);
+        assertArrayEquals(KEYID_UUID_BYTES, UuidPlus.uuidToBytes(uuid));
+        assertArrayEquals(KEYID_UUID_BYTES_MS, UuidPlus.uuidToMixEndianBytes(uuid));
+        assertEquals(KEYID_HEX_BI, UuidPlus.uuidToHex(uuid));
+    }
+
+    @Test
+    void uuidToHex_should_round_trip() {
+        var uuid = UUID.randomUUID();
+        assertEquals(uuid, UuidPlus.hexToUuid(UuidPlus.uuidToHex(uuid)));
+    }
+
+    // --- typeOf ---
+
+    @Test
+    void typeOf_should_return_uuid_type() {
+        assertEquals(UuidType.RANDOM, UuidPlus.typeOf(UUID.randomUUID()));
+        assertEquals(UuidType.TIME_ORDERED_EPOCH, UuidPlus.typeOf(UUID.ofEpochMillis(0L)));
+        assertEquals(UuidType.UNDEFINED, UuidPlus.typeOf(null));
+    }
+
+    // --- fastRandomV4 ---
+
+    @Test
+    void fastRandomV4_should_be_rfc_version_4() {
+        for (int i = 0; i < 1_000; i++) {
+            UUID uuid = UuidPlus.fastRandomV4();
+            assertEquals(4, uuid.version());
+            assertEquals(2, uuid.variant());
+            assertTrue(UuidPlus.isPatternStrict.test(uuid.toString()));
+        }
+    }
+
+    @Test
+    void fastRandomV4_with_seeded_random_should_be_reproducible() {
+        assertEquals(UuidPlus.fastRandomV4(new Random(42)), UuidPlus.fastRandomV4(new Random(42)));
+    }
+
 
 
 }

@@ -8,6 +8,21 @@ import module java.base;
 /// Supports round-tripping between UUID string formats (formatted, hex, mixed-endian),
 /// byte arrays and `BigInteger`, as well as format validation and fast random UUID generation.
 ///
+/// ## Strict UUID strings
+///
+/// `java.util.UUID.fromString()` is lenient for historical reasons: it reads each dash-separated
+/// group as a hex number and left-pads it with zeros, so `"1-1-1-1-1"` is silently turned into
+/// `00000001-0001-0001-0001-000000000001`. RFC 9562 defines the text form as exactly
+/// 8-4-4-4-12 hex digits, and this class follows that definition everywhere:
+///
+/// - [#isUuid(String)] returns `true` only for the canonical form.
+/// - [#fromString(String)] and [#tryFromString(String)] parse only what `isUuid` accepts.
+/// - [#uuidToBytes(String)] and [#uuidToMixEndianBytes(String)] also accept 32 hex digits without dashes.
+///
+/// Letters may be upper- or lowercase. Being strict guarantees that a string accepted by one method
+/// is accepted by all the others, and that `fromString(s).toString()` equals `s` (ignoring case),
+/// so the same UUID can never be stored under two different spellings.
+///
 /// This class is not instantiable.
 public final class UuidPlus {
 
@@ -45,14 +60,6 @@ public final class UuidPlus {
         /// Returns the numeric length associated with this representation.
         ///
         /// @return the expected character or byte count
-        @Override
-        public String toString() {
-            return String.valueOf(length);
-        }
-
-        /// Returns the numeric length associated with this representation.
-        ///
-        /// @return the expected character or byte count
         public int length() {
             return length;
         }
@@ -78,16 +85,21 @@ public final class UuidPlus {
 
     /// Regular-expression patterns used to validate UUID string format.
     enum REGEXP {
-        /// Strict RFC 4122 pattern: enforces version digits `1`–`5` and variant bits `8`, `9`, `a` or `b`.
-        STRICT("[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[12345][a-fA-F0-9]{3}-[89abAB][a-fA-F0-9]{3}-[a-fA-F0-9]{12}"),
+        /// Strict RFC 9562 pattern: enforces version digits `1`–`8` and variant bits `8`, `9`, `a` or `b`.
+        STRICT("[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[1-8][a-fA-F0-9]{3}-[89abAB][a-fA-F0-9]{3}-[a-fA-F0-9]{12}"),
         /// Loose pattern: only checks hex digits and dash placement, any version and variant are accepted.
-        LOOSE("[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}");
+        LOOSE("[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}"),
+        /// Hex pattern: 32 hex digits without dashes.
+        HEX("[a-fA-F0-9]{32}");
 
         REGEXP(final String value) {
             this.value = value;
+            this.compiled = Pattern.compile(value);
         }
 
         private final String value;
+
+        private final Pattern compiled;
 
         /// Returns the raw regex pattern string for this validation mode.
         ///
@@ -101,18 +113,21 @@ public final class UuidPlus {
         /// @param input the string to test
         /// @return `true` if the input matches
         public boolean matches(String input) {
-            return input.matches(this.pattern());
+            return compiled.matcher(input).matches();
         }
 
     }
 
-    /// Predicate that validates a UUID string against the strict RFC 4122 pattern
-    /// (versions 1–5, variant bits enforced), after a length pre-check.
+    /// Predicate that validates a UUID string against the strict RFC 9562 pattern
+    /// (versions 1–8, variant bits enforced), after a length pre-check.
     public static final Predicate<String> isPatternStrict = isSizeValid.and(REGEXP.STRICT::matches);
 
     /// Predicate that validates a UUID string against the loose pattern
     /// (hex digits and dash placement only), after a length pre-check.
     public static final Predicate<String> isPatternLoose = isSizeValid.and(REGEXP.LOOSE::matches);
+
+    /// Predicate that accepts a UUID string either formatted with dashes or as 32 hex digits.
+    private static final Predicate<String> isUuidOrHex = isPatternLoose.or(isSizeValid.and(REGEXP.HEX::matches));
 
 
     // --- Internal implementation ---
@@ -146,14 +161,24 @@ public final class UuidPlus {
 
     private static final Function<String, byte[]> hexToBytesFn = HexFormat.of()::parseHex;
 
-    private static final UnaryOperator<String> uuidToHex = s -> s.replace("-", "");
+    private static final UnaryOperator<String> requireUuidString = s -> {
+        if (isUuidOrHex.test(s)) return s;
+        throw new IllegalArgumentException("'" + s + "' is not a UUID string (formatted or 32 hex digits)");
+    };
 
-    private static final Function<String, byte[]> uuidToBytesFn = uuidToHex.andThen(hexToBytesFn);
+    private static final UnaryOperator<String> stripDashes = s -> s.replace("-", "");
+
+    private static final Function<String, byte[]> uuidToBytesFn = requireUuidString.andThen(stripDashes).andThen(hexToBytesFn);
 
     private static final Function<String, byte[]> uuidToMixEndianBytesFn = uuidToBytesFn.andThen(toMixEndian);
 
+    private static final UnaryOperator<byte[]> requireUuidBytes = bytes -> {
+        if (UUID_LENGTH.isLengthValid(bytes)) return bytes;
+        throw new IllegalArgumentException("The byte array length is expected to be '" + UUID_LENGTH.BYTES.length() + "'");
+    };
+
     private static final IntFunction<Function<byte[], Long>> toLong = offset -> bytes ->
-            ByteBuffer.wrap(bytes, offset, Long.BYTES).getLong();
+            ByteBuffer.wrap(requireUuidBytes.apply(bytes), offset, Long.BYTES).getLong();
 
     private static final int OFFSET_MSB = 0;
 
@@ -166,11 +191,8 @@ public final class UuidPlus {
     private static final Function<byte[], UUID> uuidFromBytesFn = bytes ->
             new UUID(mostSignificantBitsFn.apply(bytes), leastSignificantBitsFn.apply(bytes));
 
-    private static final Function<Function<byte[], byte[]>, Function<byte[], UUID>> arrayStrategyToUuid = strategy -> bytes -> {
-        if (UUID_LENGTH.isLengthValid(bytes))
-            return strategy.andThen(uuidFromBytesFn).apply(bytes);
-        throw new IllegalArgumentException("The byte array length is expected to be '" + UUID_LENGTH.BYTES + "'");
-    };
+    private static final Function<Function<byte[], byte[]>, Function<byte[], UUID>> arrayStrategyToUuid = strategy ->
+            requireUuidBytes.andThen(strategy).andThen(uuidFromBytesFn);
 
     private static final Function<byte[], UUID> mixEndianToUuidFn = arrayStrategyToUuid.apply(toMixEndian);
 
@@ -180,7 +202,12 @@ public final class UuidPlus {
 
     private static final Function<String, UUID> hexMixEndianToUuidFn = hexToBytesFn.andThen(mixEndianToUuidFn);
 
+    private static final int UUID_BITS = 128;
+
     private static final Function<BigInteger, UUID> bigIntegerToUuidFn = v -> {
+        if (v.signum() < 0 || v.bitLength() > UUID_BITS) {
+            throw new IllegalArgumentException("The value is expected to be an unsigned " + UUID_BITS + "-bit integer: " + v);
+        }
         byte[] raw = v.toByteArray();
         byte[] bytes16 = new byte[UUID_LENGTH.BYTES.length()];
         int srcPos = Math.max(0, raw.length - 16);
@@ -204,16 +231,45 @@ public final class UuidPlus {
     ///
     /// @param uuid the UUID string (formatted with dashes or raw 32-char hex)
     /// @return 16-byte big-endian array
+    /// @throws IllegalArgumentException if `uuid` is neither a formatted UUID nor 32 hex digits
     public static byte[] uuidToBytes(String uuid) {
         return uuidToBytesFn.apply(uuid);
     }
 
+    /// Converts a `UUID` to a 16-byte big-endian array.
+    ///
+    /// @param uuid the UUID to convert
+    /// @return 16-byte big-endian array
+    public static byte[] uuidToBytes(UUID uuid) {
+        return ByteBuffer.allocate(UUID_LENGTH.BYTES.length())
+                .putLong(uuid.getMostSignificantBits())
+                .putLong(uuid.getLeastSignificantBits())
+                .array();
+    }
+
     /// Converts a UUID string to a 16-byte array in mixed-endian byte order.
     ///
-    /// @param uuid the UUID string
+    /// @param uuid the UUID string (formatted with dashes or raw 32-char hex)
     /// @return 16-byte mixed-endian array
+    /// @throws IllegalArgumentException if `uuid` is neither a formatted UUID nor 32 hex digits
     public static byte[] uuidToMixEndianBytes(String uuid) {
         return uuidToMixEndianBytesFn.apply(uuid);
+    }
+
+    /// Converts a `UUID` to a 16-byte array in mixed-endian byte order.
+    ///
+    /// @param uuid the UUID to convert
+    /// @return 16-byte mixed-endian array
+    public static byte[] uuidToMixEndianBytes(UUID uuid) {
+        return toMixEndian.apply(uuidToBytes(uuid));
+    }
+
+    /// Converts a `UUID` to a 32-character uppercase hex string (no dashes), big-endian.
+    ///
+    /// @param uuid the UUID to convert
+    /// @return 32-character uppercase hex string
+    public static String uuidToHex(UUID uuid) {
+        return bytesToHexFn.apply(uuidToBytes(uuid));
     }
 
     /// Converts a 16-byte big-endian array to a `UUID`.
@@ -256,8 +312,9 @@ public final class UuidPlus {
     /// and the optional leading `0x00` sign byte that `toByteArray()` prepends for
     /// values whose bit 127 is set.
     ///
-    /// @param value the BigInteger value (must be non-negative)
+    /// @param value the BigInteger value (must be non-negative and fit in 128 bits)
     /// @return the corresponding UUID
+    /// @throws IllegalArgumentException if `value` is negative or longer than 128 bits
     public static UUID bigIntegerToUuid(BigInteger value) {
         return bigIntegerToUuidFn.apply(value);
     }
@@ -266,6 +323,7 @@ public final class UuidPlus {
     ///
     /// @param bytes 16-byte UUID array
     /// @return the most-significant long
+    /// @throws IllegalArgumentException if the array is not exactly 16 bytes
     public static long mostSignificantBits(byte[] bytes) {
         return mostSignificantBitsFn.apply(bytes);
     }
@@ -274,6 +332,7 @@ public final class UuidPlus {
     ///
     /// @param bytes 16-byte UUID array
     /// @return the least-significant long
+    /// @throws IllegalArgumentException if the array is not exactly 16 bytes
     public static long leastSignificantBits(byte[] bytes) {
         return leastSignificantBitsFn.apply(bytes);
     }
@@ -286,10 +345,7 @@ public final class UuidPlus {
     /// @param uuid the UUID to convert
     /// @return a non-negative `BigInteger` holding the full 128-bit UUID value
     public static BigInteger toBigInteger(UUID uuid) {
-        var bb = ByteBuffer.wrap(new byte[UUID_LENGTH.BYTES.length()]);
-        bb.putLong(uuid.getMostSignificantBits());
-        bb.putLong(uuid.getLeastSignificantBits());
-        return new BigInteger(1, bb.array());
+        return new BigInteger(1, uuidToBytes(uuid));
     }
 
     private static final int SHA1_DIGEST_SIZE = 20;
@@ -321,19 +377,63 @@ public final class UuidPlus {
         return uuid2 != null && uuid2.equalsIgnoreCase(uuid1) && isPatternLoose.test(uuid1);
     }
 
-    /// Silently checks whether a string is a valid UUID.
+    /// Silently checks whether a string is a valid UUID in canonical form (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`).
     ///
-    /// Delegates to `UUID.fromString()` and catches `IllegalArgumentException` without propagating it.
+    /// Unlike `UUID.fromString()`, shortened groups such as `1-1-1-1-1` are rejected
+    /// (see "Strict UUID strings" in the class documentation). Any version and variant are accepted;
+    /// use [#isPatternStrict] to also check them.
     ///
-    /// @param uuid the string to validate
-    /// @return `true` if `uuid` is a well-formed UUID string
+    /// ```
+    /// isUuid("adb41c24-2dbf-4a6d-958b-4457c0d27b95") // true
+    /// isUuid("ADB41C24-2DBF-4A6D-958B-4457C0D27B95") // true
+    /// isUuid("1-1-1-1-1")                            // false, although UUID.fromString accepts it
+    /// isUuid("adb41c242dbf4a6d958b4457c0d27b95")     // false, no dashes
+    /// isUuid(null)                                   // false
+    /// ```
+    ///
+    /// @param uuid the string to validate, may be `null`
+    /// @return `true` if `uuid` is a well-formed UUID string, `false` otherwise (including `null`)
     public static boolean isUuid(final String uuid) {
-        try {
-            UUID.fromString(uuid);
-        } catch (final IllegalArgumentException _) {
-            return false;
+        return isPatternLoose.test(uuid);
+    }
+
+    /// Parses a UUID string in canonical form (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`).
+    ///
+    /// Strict counterpart of `UUID.fromString()`: shortened groups such as `1-1-1-1-1`,
+    /// which the JDK silently pads with zeros, are rejected. Accepts exactly the strings
+    /// for which [#isUuid(String)] returns `true`.
+    ///
+    /// ```
+    /// UUID.fromString("1-1-1-1-1")     // 00000001-0001-0001-0001-000000000001
+    /// UuidPlus.fromString("1-1-1-1-1") // IllegalArgumentException
+    /// ```
+    ///
+    /// @param uuid the string to parse
+    /// @return the corresponding UUID
+    /// @throws IllegalArgumentException if `uuid` is `null` or not in canonical form
+    public static UUID fromString(final String uuid) {
+        if (!isUuid(uuid)) {
+            throw new IllegalArgumentException("'" + uuid + "' is not a UUID in canonical form (8-4-4-4-12 hex digits)");
         }
-        return true;
+        return UUID.fromString(uuid);
+    }
+
+    /// Parses a UUID string in canonical form, without throwing.
+    ///
+    /// Same rules as [#fromString(String)].
+    ///
+    /// @param uuid the string to parse, may be `null`
+    /// @return an `Optional` containing the UUID, or empty if `uuid` is `null` or not in canonical form
+    public static Optional<UUID> tryFromString(final String uuid) {
+        return isUuid(uuid) ? Optional.of(UUID.fromString(uuid)) : Optional.empty();
+    }
+
+    /// Returns the type of a UUID, derived from its version field.
+    ///
+    /// @param uuid the UUID to inspect, may be `null`
+    /// @return the UUID type, `UuidType.UNDEFINED` for `null` or an unknown version
+    public static UuidType typeOf(UUID uuid) {
+        return UuidType.type(uuid);
     }
 
     /// Converts a 16-byte array to a formatted UUID string (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`).
@@ -363,20 +463,48 @@ public final class UuidPlus {
     /// UUID v7 encodes the Unix epoch in milliseconds in the 48 most-significant bits
     /// (bits 127–80). Extracting them is a simple unsigned right-shift by 16.
     ///
-    /// @param uuid the UUID to inspect
-    /// @return an `Optional` containing the embedded `Instant`, or empty if the UUID is not version 7
+    /// @param uuid the UUID to inspect, may be `null`
+    /// @return an `Optional` containing the embedded `Instant`, or empty if the UUID is `null` or not version 7
     public static Optional<Instant> tryExtractTimestamp(UUID uuid) {
-        if (uuid.version() != UuidType.TIME_ORDERED_EPOCH.version()) return Optional.empty();
+        if (uuid == null || uuid.version() != UuidType.TIME_ORDERED_EPOCH.version()) return Optional.empty();
         return Optional.of(Instant.ofEpochMilli(uuid.getMostSignificantBits() >>> 16));
     }
 
+    // --- Fast random generation ---
+    //
+    // The default generator is a per-thread L128X256MixRandom rather than ThreadLocalRandom:
+    // ThreadLocalRandom has a single 64-bit state, so it can produce at most 2^64 distinct UUIDs
+    // and duplicates follow the 64-bit birthday bound (~50% after 4 billion UUIDs).
+    // L128X256MixRandom has a 384-bit state (128-bit LCG + 256-bit xoshiro), keeping collisions
+    // at the level a 122-bit random UUID is designed for.
+    //
+    // Its no-argument constructor seeds from a single 64-bit value, which would bring the 2^64
+    // limit back across generator instances; each one is therefore seeded with a full 64-byte
+    // seed (8 longs) from SecureRandom, once per thread.
+
+    private static final String FAST_RNG_ALGORITHM = "L128X256MixRandom";
+
+    private static final int FAST_RNG_SEED_BYTES = 64;
+
+    private static final RandomGeneratorFactory<RandomGenerator> FAST_RNG_FACTORY = RandomGeneratorFactory.of(FAST_RNG_ALGORITHM);
+
+    private static final SecureRandom SEEDER = new SecureRandom();
+
+    private static final ThreadLocal<RandomGenerator> FAST_RNG = ThreadLocal.withInitial(() -> {
+        var seed = new byte[FAST_RNG_SEED_BYTES];
+        SEEDER.nextBytes(seed);
+        return FAST_RNG_FACTORY.create(seed);
+    });
+
     /// Returns a randomly generated UUID using the provided `RandomGenerator`.
     ///
-    /// Accepts any `RandomGenerator` implementation — use `ThreadLocalRandom.current()`
-    /// for performance in production, or a seeded `Random` for reproducible tests.
+    /// Accepts any `RandomGenerator` implementation, for example a seeded `Random` for
+    /// reproducible tests. The UUID is only as unique as the generator: a generator with a
+    /// 64-bit state, such as `ThreadLocalRandom` or `Random`, can produce at most 2^64
+    /// distinct UUIDs.
     ///
     /// **Note:** the version and variant bits are _not_ set, so the result does not
-    /// conform to RFC 4122 UUID v4.
+    /// conform to RFC 9562 UUID v4. Use [#fastRandomV4(RandomGenerator)] for valid v4 UUIDs.
     ///
     /// @param rng the random generator to use
     /// @return a randomly generated UUID
@@ -384,16 +512,58 @@ public final class UuidPlus {
         return new UUID(rng.nextLong(), rng.nextLong());
     }
 
-    /// Returns a randomly generated UUID using `ThreadLocalRandom`.
+    /// Returns a randomly generated UUID using a fast, non-cryptographic generator.
     ///
-    /// Faster than `UUID.randomUUID()` because it avoids `SecureRandom`.
+    /// Faster than `UUID.randomUUID()` because it avoids `SecureRandom` on each call.
+    /// See [#fastRandomV4()] for the generator used and its limits.
     ///
     /// **Note:** the version and variant bits are _not_ set, so the result does not
-    /// conform to RFC 4122 UUID v4.
+    /// conform to RFC 9562 UUID v4. Use [#fastRandomV4()] for valid v4 UUIDs.
     ///
     /// @return a randomly generated UUID
     public static UUID fastRandom() {
-        return fastRandom(ThreadLocalRandom.current());
+        return fastRandom(FAST_RNG.get());
+    }
+
+    private static final long VERSION_MASK = 0xFFFFFFFFFFFF0FFFL;
+    private static final long VERSION_4 = 0x0000000000004000L;
+    private static final long VARIANT_MASK = 0x3FFFFFFFFFFFFFFFL;
+    private static final long VARIANT_RFC = 0x8000000000000000L;
+
+    /// Returns an RFC 9562 version 4 UUID using the provided `RandomGenerator`.
+    ///
+    /// Same as [#fastRandom(RandomGenerator)], with the version (`4`) and variant (`10`) bits set,
+    /// leaving 122 random bits.
+    ///
+    /// **Note:** not suitable where unpredictability matters unless `rng` is cryptographically strong,
+    /// and only as unique as `rng`: a generator with a 64-bit state (`ThreadLocalRandom`, `Random`)
+    /// gives a ~50% chance of a duplicate after about 4 billion UUIDs.
+    ///
+    /// @param rng the random generator to use
+    /// @return a version 4 UUID
+    public static UUID fastRandomV4(RandomGenerator rng) {
+        long msb = (rng.nextLong() & VERSION_MASK) | VERSION_4;
+        long lsb = (rng.nextLong() & VARIANT_MASK) | VARIANT_RFC;
+        return new UUID(msb, lsb);
+    }
+
+    /// Returns an RFC 9562 version 4 UUID using a fast, non-cryptographic generator.
+    ///
+    /// Each thread uses its own `L128X256MixRandom` (384-bit state), seeded once from
+    /// `SecureRandom`, so collisions stay as unlikely as with `UUID.randomUUID()`
+    /// while avoiding `SecureRandom` on each call.
+    ///
+    /// **Not cryptographically secure:** the output can be predicted from previous outputs.
+    /// Use `UUID.randomUUID()` for anything that must be unguessable (session ids, tokens,
+    /// password-reset links, ids exposed in public URLs).
+    ///
+    /// Seeding costs one `SecureRandom` call per thread, which is negligible for pooled
+    /// threads, but comparable to `UUID.randomUUID()` when each UUID is generated by a new
+    /// short-lived (e.g. virtual) thread.
+    ///
+    /// @return a version 4 UUID
+    public static UUID fastRandomV4() {
+        return fastRandomV4(FAST_RNG.get());
     }
 
     private UuidPlus() {
