@@ -127,13 +127,61 @@ faster than `UUID.randomUUID()`.
 - Java 27 or newer. The jar is a named module: `flejne.dev.uuid`.
 - Maven 3.9 or newer to build.
 
+## Installation
+
+The jar is published to [GitHub Packages](https://github.com/LaClarence/fun-with-uuid/packages).
+GitHub Packages requires authentication even for public packages, so this takes two steps.
+
+**1. Add the repository** to your project's `pom.xml`:
+
 ```xml
-<dependency>
-    <groupId>flejne.dev.uuid</groupId>
-    <artifactId>uuidplus</artifactId>
-    <version>0.6-SNAPSHOT</version>
-</dependency>
+<repositories>
+    <repository>
+        <id>github-uuidplus</id>
+        <url>https://maven.pkg.github.com/LaClarence/fun-with-uuid</url>
+    </repository>
+</repositories>
+
+<dependencies>
+    <dependency>
+        <groupId>flejne.dev.uuid</groupId>
+        <artifactId>uuidplus</artifactId>
+        <version>0.6</version>
+    </dependency>
+</dependencies>
 ```
+
+**2. Add your credentials** to `~/.m2/settings.xml`. Use a GitHub
+[personal access token (classic)](https://github.com/settings/tokens) with the `read:packages` scope;
+the server `id` must match the repository `id` above:
+
+```xml
+<settings>
+    <servers>
+        <server>
+            <id>github-uuidplus</id>
+            <username>YOUR_GITHUB_USERNAME</username>
+            <password>YOUR_TOKEN</password>
+        </server>
+    </servers>
+</settings>
+```
+
+In a GitHub Actions workflow, you can use the built-in `GITHUB_TOKEN` instead of a personal token.
+
+## Releasing
+
+Publishing a GitHub Release runs the [Publish workflow](.github/workflows/publish.yml): it sets the
+version from the release tag, builds and tests the project, and uploads the jar, sources and javadoc
+to GitHub Packages.
+
+```bash
+gh release create v0.6 --generate-notes
+```
+
+The tag must look like `v0.6` or `0.6`. The version change only happens inside the workflow, so
+afterwards bump `<version>` on `master` (for example to `0.7-SNAPSHOT`). A version that already
+exists in GitHub Packages cannot be published again.
 
 ## References
 

@@ -27,9 +27,8 @@ jobs:
           java-version: '27'
           cache: maven
 
-      # Release profile builds the sources and javadoc jars too; signing is skipped (no GPG key in CI)
       - name: Build and test
-        run: mvn -B -ntp -Prelease -Dgpg.skip verify
+        run: mvn -B -ntp verify
 
       - name: Upload jars
         uses: actions/upload-artifact@v7
