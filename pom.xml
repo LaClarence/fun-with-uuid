@@ -4,7 +4,7 @@
     <groupId>flejne.dev.uuid</groupId>
     <artifactId>uuidplus</artifactId>
     <packaging>jar</packaging>
-    <version>0.6-SNAPSHOT</version>
+    <version>0.7-SNAPSHOT</version>
     <name>uuidplus</name>
     <url>https://github.com/LaClarence/fun-with-uuid</url>
     <description>Utility class for UUID manipulation, conversion and validation</description>

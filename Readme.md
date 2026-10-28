@@ -176,11 +176,11 @@ version from the release tag, builds and tests the project, and uploads the jar,
 to GitHub Packages.
 
 ```bash
-gh release create v0.6 --generate-notes
+gh release create v0.7 --generate-notes
 ```
 
 The tag must look like `v0.6` or `0.6`. The version change only happens inside the workflow, so
-afterwards bump `<version>` on `master` (for example to `0.7-SNAPSHOT`). A version that already
+afterwards bump `<version>` on `master` (for example to `0.8-SNAPSHOT`). A version that already
 exists in GitHub Packages cannot be published again.
 
 ## References
